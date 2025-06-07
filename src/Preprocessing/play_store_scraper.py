@@ -4,7 +4,7 @@ from datetime import datetime
 import logging
 
 # Set up logging
-logging.basicConfig(filename='scraper.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename='../log/scraper.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class PlayStoreScraper:
     def __init__(self, app_name, app_id):
