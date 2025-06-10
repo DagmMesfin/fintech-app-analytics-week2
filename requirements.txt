@@ -5,3 +5,6 @@ transformers
 torch
 scikit-learn
 spacy
+
+seaborn
+matplotlib
