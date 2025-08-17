@@ -5,7 +5,9 @@ transformers
 torch
 scikit-learn
 spacy
-oracledb
+psycopg2-binary
+wordcloud
+pytest
 
 seaborn
 matplotlib

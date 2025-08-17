@@ -1,8 +1,22 @@
-
+import os
 import pandas as pd
-import oracledb
+import psycopg2
 
-def save_to_oracle():
+
+def get_pg_connection():
+    """Create a PostgreSQL connection using environment variables with sensible defaults.
+    Env vars: PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD
+    """
+    return psycopg2.connect(
+        host=os.getenv("PGHOST", "localhost"),
+        port=int(os.getenv("PGPORT", "5432")),
+        dbname=os.getenv("PGDATABASE", "fintech"),
+        user=os.getenv("PGUSER", "postgres"),
+        password=os.getenv("PGPASSWORD", "postgres"),
+    )
+
+
+def save_to_postgres():
     # Load your cleaned DataFrame
     df = pd.read_csv("../data/thematic_results.csv")
     bank_id_map = {"CBE": 1, "Dashen": 2, "BOA": 3}
@@ -12,68 +26,66 @@ def save_to_oracle():
 
     df["review_id"] = df.index.astype(str)
 
-    # Connect to Oracle DB
-    conn = oracledb.connect(user="SYSTEM", password="12121212", dsn="localhost/XEPDB1")
+    # Connect to PostgreSQL
+    conn = get_pg_connection()
     cursor = conn.cursor()
 
-    #clear the tables if they exist
-    cursor.execute("TRUNCATE TABLE reviews")
-    cursor.execute("TRUNCATE TABLE banks")
+    # Recreate tables to ensure schema matches Postgres
+    cursor.execute(
+        """
+        DROP TABLE IF EXISTS reviews;
+        DROP TABLE IF EXISTS banks;
 
-    # Create tables (if not already created)
-    cursor.execute("""
-    BEGIN
-    EXECUTE IMMEDIATE 'CREATE TABLE banks (
-        bank_id NUMBER PRIMARY KEY,
-        bank_name VARCHAR2(100)
-    )';
-    EXCEPTION
-    WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
-    END;
-    """)
+        CREATE TABLE IF NOT EXISTS banks (
+            bank_id INTEGER PRIMARY KEY,
+            bank_name VARCHAR(100)
+        );
 
-    cursor.execute("""
-    BEGIN
-    EXECUTE IMMEDIATE 'CREATE TABLE reviews (
-        review_id VARCHAR2(50) PRIMARY KEY,
-        review_text CLOB,
-        rating NUMBER,
-        review_date DATE,
-        sentiment_label VARCHAR2(20),
-        sentiment_score FLOAT,
-        themes VARCHAR2(100),
-        bank_id NUMBER,
-        FOREIGN KEY (bank_id) REFERENCES banks(bank_id)
-    )';
-    EXCEPTION
-    WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
-    END;
-    """)
+        CREATE TABLE IF NOT EXISTS reviews (
+            review_id VARCHAR(50) PRIMARY KEY,
+            review_text TEXT,
+            rating INTEGER,
+            review_date DATE,
+            sentiment_label VARCHAR(20),
+            sentiment_score DOUBLE PRECISION,
+            themes VARCHAR(100),
+            bank_id INTEGER REFERENCES banks(bank_id)
+        );
+        """
+    )
 
     # Insert into banks
-    banks = df[['bank_id', 'bank']].drop_duplicates().values.tolist()
-    cursor.executemany("INSERT INTO banks (bank_id, bank_name) VALUES (:1, :2)", banks)
+    banks = df[["bank_id", "bank"]].drop_duplicates().values.tolist()
+    cursor.executemany(
+        "INSERT INTO banks (bank_id, bank_name) VALUES (%s, %s)",
+        banks,
+    )
 
     # Insert into reviews
-    data = df[[
-        "review_id", "review_text", "rating", "review_date",
-        "sentiment_label", "sentiment_score", "themes", "bank_id"
+    data = df[ [
+        "review_id",
+        "review_text",
+        "rating",
+        "review_date",
+        "sentiment_label",
+        "sentiment_score",
+        "themes",
+        "bank_id",
     ]].values.tolist()
 
-    cursor.executemany("""
-    INSERT INTO reviews (
-        review_id, review_text, rating, review_date,
-        sentiment_label, sentiment_score, themes, bank_id
+    cursor.executemany(
+        """
+        INSERT INTO reviews (
+            review_id, review_text, rating, review_date,
+            sentiment_label, sentiment_score, themes, bank_id
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        data,
     )
-    VALUES (
-        :1, :2, :3, TO_DATE(:4, 'YYYY-MM-DD'),
-        :5, :6, :7, :8
-    )
-    """, data)
 
     # Commit and close
     conn.commit()
     cursor.close()
     conn.close()
 
-    print("✅ Data inserted using oracledb!")
+    print("✅ Data inserted using PostgreSQL!")
