@@ -8,6 +8,7 @@ spacy
 psycopg2-binary
 wordcloud
 pytest
+streamlit
 
 seaborn
 matplotlib
